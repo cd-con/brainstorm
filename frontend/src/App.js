@@ -4,7 +4,7 @@ import Login from './pages/login';
 
 function App() {
   return (
-    <Login/>
+    <p>Nuh uh</p>
   );
 }
 
