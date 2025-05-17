@@ -6,7 +6,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import Toaster from './utility/toaster'
 import Login from './pages/login';
 import UserProfile from './pages/account';
-import Canvas from './pages/drawing';
+import WorkArea from './pages/canvas/WorkArea';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -15,7 +15,7 @@ root.render(
     <Routes>
       <Route path="/" element={<Login />} />
       <Route path="you" element={<UserProfile />} />
-      <Route path="/canvas/:canvasId" element={<Canvas/>} />
+      <Route path="/canvas/:canvasId" element={<WorkArea/>} />
     </Routes>
   </BrowserRouter>
 );
