@@ -1,6 +1,6 @@
 import { Button, Col, Form } from 'react-bootstrap';
 import { useNavigate } from "react-router";
-import LoginProvider from '../providers/Debug';
+import LoginProvider from '../providers/auth/Debug';
 
 function Login() {
   const navigate = useNavigate();

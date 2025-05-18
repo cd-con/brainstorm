@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Container, Row, Col, Card, Button, ListGroup, Modal, Form, Spinner, Alert } from 'react-bootstrap';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import LoginProvider from '../providers/Debug.js'; // Adjust path as needed
+import LoginProvider from '../providers/auth/Debug.js'; // Adjust path as needed
 
 const UserProfile = () => {
   const navigate = useNavigate();

@@ -1,76 +1,78 @@
-﻿import React from 'react';
-import { Button, ButtonGroup, Form } from 'react-bootstrap';
+﻿import React, { useContext } from 'react';
+import { Button, ButtonGroup, Col, Form } from 'react-bootstrap';
+import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
+import { iAmBusy } from '../../utility/utils';
+import { useNavigate } from 'react-router';
 
 const Toolbar = ({ tool, setTool, addText, setImages, images, color, setColor, selectedId, setLines, setTexts, lines, texts }) => {
-  const addImage = (e) => {
+    const navigate  = useNavigate();
+  const { syncUpdate, uploadImage } = useContext(WebSocketContext);
+
+  const addImage = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const img = new window.Image();
       img.src = reader.result;
-      img.onload = () => {
-        setImages([...images, { id: Date.now(), image: img, x: 50, y: 50, width: 100, height: 100 }]);
+      img.onload = async () => {
+        const newImage = {
+          id: Date.now(),
+          image: img,
+          x: 50,
+          y: 50,
+          width: 100,
+          height: 100,
+          zIndex: 1,
+        };
+        setImages((prev) => [...prev, newImage]);
+        const response = await syncUpdate(newImage.id, 'image', newImage, () => {
+          setImages((prev) => prev.filter((i) => i.id !== newImage.id));
+        });
+        if (response.success) {
+          uploadImage(newImage.id, reader.result);
+        } else {
+          iAmBusy(`Failed to add image: ${response.error}`);
+          setImages((prev) => prev.filter((i) => i.id !== newImage.id));
+        }
       };
     };
     reader.readAsDataURL(file);
   };
 
-  const changeColor = (e) => {
-    const newColor = e.target.value;
-    setColor(newColor);
-    if (selectedId) {
-      const [type, id] = selectedId.split('-');
-      if (type === 'text') {
-        setTexts(
-          texts.map((t) =>
-            t.id === parseInt(id) ? { ...t, fill: newColor } : t
-          )
-        );
-      } else if (type === 'line') {
-        setLines(
-          lines.map((l) =>
-            l.id === parseInt(id) ? { ...l, color: newColor } : l
-          )
-        );
-      }
-    }
-  };
-
   return (
-    <ButtonGroup className="mb-3">
-      <Button
-        variant={tool === 'pen' ? 'primary' : 'outline-primary'}
-        onClick={() => setTool('pen')}
-      >
-        Pen
-      </Button>
-      <Button
-        variant={tool === 'select' ? 'primary' : 'outline-primary'}
-        onClick={() => setTool('select')}
-      >
-        Select
-      </Button>
-      <Button onClick={addText}>Add Text</Button>
-      <Form.Control
-        type="file"
-        accept="image/*"
-        onChange={addImage}
-        style={{ display: 'none' }}
-        id="image-upload"
-      />
-      <Button
-        onClick={() => document.getElementById('image-upload').click()}
-      >
-        Add Image
-      </Button>
-      <Form.Control
-        type="color"
-        value={color}
-        onChange={changeColor}
-        style={{ width: '50px' }}
-      />
-    </ButtonGroup>
+    <div>
+      <Button className='' onClick={()=> navigate("/you")}>Выйти</Button>
+      <ButtonGroup as={Col} className="mb-3 p-2" style={{ zIndex: 11 }}>
+        <Button
+          variant={tool === 'pen' ? 'primary' : 'outline-primary'}
+          onClick={() => setTool('pen')}
+        >
+          Карандаш
+        </Button>
+        <Button
+          variant={tool === 'select' ? 'primary' : 'outline-primary'}
+          onClick={() => setTool('select')}
+        >
+          Рука
+        </Button>
+      </ButtonGroup>
+      <ButtonGroup as={Col} className="mb-3 p-2" style={{ zIndex: 11 }}>
+        <Button onClick={() => { setTool('select'); addText(syncUpdate); }}>Добавить текст</Button>
+        <Form.Control
+          type="file"
+          accept="image/*"
+          onChange={addImage}
+          style={{ display: 'none' }}
+          id="image-upload"
+        />
+        <Button
+          onClick={() => { setTool('select'); document.getElementById('image-upload').click(); }}
+        >
+          Добавить картинку
+        </Button>
+      </ButtonGroup>
+    </div>
   );
 };
 
