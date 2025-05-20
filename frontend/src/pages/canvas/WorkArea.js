@@ -15,6 +15,7 @@ const WorkArea = () => {
   const [scale, setScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
+  // TODO Move to toolbar
   const addText = async (syncUpdate) => {
     const newText = {
       id: Date.now(),

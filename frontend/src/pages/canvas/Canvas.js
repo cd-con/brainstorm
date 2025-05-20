@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useState, useContext } from 'react';
+﻿import { useRef, useEffect, useState, useContext } from 'react';
 import { Stage, Layer, Line, Text, Image, Transformer } from 'react-konva';
 import { handleMouseDown, handleMouseMove, handleMouseUp, handleSelect, iAmBusy } from '../../utility/utils.js';
 import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
@@ -23,6 +23,9 @@ const Canvas = ({ tool, lines, setLines, texts, setTexts, images, setImages, sel
   }
 
   const drawGrid = () => {
+  console.warn("DrawGrid feature temporary disabled due to incorrect drawing state. This is not an error.")
+  return [];
+
   const stage = stageRef.current;
   if (!stage) return [];
   

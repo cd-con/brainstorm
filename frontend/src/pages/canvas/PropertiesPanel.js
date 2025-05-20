@@ -17,12 +17,13 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
   type === 'text' ? texts.find((text) => text.id === parseInt(id)) :
   type === 'image' ? images.find((img) => img.id === parseInt(id)) : 
   null;
-  
 
-
-   if (!selectedObject) {
+  // Дополнительная проверка
+  // DEPRECATED - возможно стоит убрать
+  if (!selectedObject) {
     return <div className="p-3" style={{ background: '#f8f9fa' }}>Объект не выбран</div>;
   }
+
   const handleTextChange = async (e) => {
     if (type === 'text') {
       const newText = e.target.value;
