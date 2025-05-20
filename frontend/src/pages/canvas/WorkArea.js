@@ -12,14 +12,10 @@ const WorkArea = () => {
   const [images, setImages] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [color, setColor] = useState('#000000');
+  const [scale, setScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
   const addText = async (syncUpdate) => {
-    const maxZIndex = Math.max(
-      ...lines.map((l) => l.zIndex || 0),
-      ...texts.map((t) => t.zIndex || 0),
-      ...images.map((i) => i.zIndex || 0),
-      0
-    );
     const newText = {
       id: Date.now(),
       text: 'New Text',
@@ -27,7 +23,7 @@ const WorkArea = () => {
       y: 50,
       fontSize: 20,
       fill: color,
-      zIndex: maxZIndex,
+      zIndex: 1
     };
     setTexts((prev) => [...prev, newText]);
     const response = await syncUpdate(newText.id, 'text', newText, () => {
@@ -40,10 +36,10 @@ const WorkArea = () => {
 
   return (
     <WebSocketProvider setLines={setLines} setTexts={setTexts} setImages={setImages} setSelectedId={setSelectedId}>
-      <div>
+      <div style={{ position: 'relative', height: '100vh', width: '100vw' }}>
         <div
-          className="d-flex flex-column position-absolute top-50 w-25 start-0 translate-middle-y rounded bg-light p-2"
-          style={{ zIndex: 10, maxWidth: 256 }}
+          className="d-flex flex-column position-absolute top-50 start-0 translate-middle-y rounded bg-light p-2 ms-2"
+          style={{ zIndex: 10, width: '250px' }}
         >
           <Toolbar
             tool={tool}
@@ -56,6 +52,9 @@ const WorkArea = () => {
             selectedId={selectedId}
             setLines={setLines}
             setTexts={setTexts}
+            scale={scale}
+            setScale={setScale}
+            setStagePos={setStagePos}
           />
           <PropertiesPanel
             selectedId={selectedId}
@@ -69,20 +68,22 @@ const WorkArea = () => {
             setColor={setColor}
           />
         </div>
-        <div style={{ flex: 1, position: 'absolute' }}>
-          <Canvas
-            tool={tool}
-            lines={lines}
-            setLines={setLines}
-            texts={texts}
-            setTexts={setTexts}
-            images={images}
-            setImages={setImages}
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            color={color}
-          />
-        </div>
+        <Canvas
+          tool={tool}
+          lines={lines}
+          setLines={setLines}
+          texts={texts}
+          setTexts={setTexts}
+          images={images}
+          setImages={setImages}
+          selectedId={selectedId}
+          setSelectedId={setSelectedId}
+          color={color}
+          scale={scale}
+          setScale={setScale}
+          stagePos={stagePos}
+          setStagePos={setStagePos}
+        />
       </div>
     </WebSocketProvider>
   );

@@ -1,13 +1,28 @@
 ﻿import React, { useContext } from 'react';
-import { Button, ButtonGroup, Col, Form } from 'react-bootstrap';
+import { Button, ButtonGroup, Form, InputGroup } from 'react-bootstrap';
 import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
 import { iAmBusy } from '../../utility/utils';
 import { useNavigate } from 'react-router';
 
-const Toolbar = ({ tool, setTool, addText, setImages, images, color, setColor, selectedId, setLines, setTexts, lines, texts }) => {
-    const navigate  = useNavigate();
+const Toolbar = ({ 
+  tool, 
+  setTool, 
+  addText, 
+  setImages, 
+  images, 
+  color, 
+  setColor, 
+  selectedId, 
+  setLines, 
+  setTexts,
+  scale,
+  setScale,
+  setStagePos
+}) => {
+  const navigate = useNavigate();
   const { syncUpdate, uploadImage } = useContext(WebSocketContext);
 
+  // Добавляем недостающую функцию
   const addImage = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -40,25 +55,42 @@ const Toolbar = ({ tool, setTool, addText, setImages, images, color, setColor, s
     reader.readAsDataURL(file);
   };
 
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 4));
+  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.1));
+  const handleZoomReset = () => {
+    setScale(1);
+    setStagePos({ x: 0, y: 0 });
+  };
+
   return (
-    <div>
-      <Button className='' onClick={()=> navigate("/you")}>Выйти</Button>
-      <ButtonGroup as={Col} className="mb-3 p-2" style={{ zIndex: 11 }}>
-        <Button
-          variant={tool === 'pen' ? 'primary' : 'outline-primary'}
-          onClick={() => setTool('pen')}
-        >
-          Карандаш
-        </Button>
+    <div className="d-flex flex-wrap align-items-center gap-3 p-2 bg-light border-bottom">
+      <Button variant="outline-secondary" onClick={() => navigate("/you")}>🚪</Button>
+
+      <ButtonGroup>
         <Button
           variant={tool === 'select' ? 'primary' : 'outline-primary'}
           onClick={() => setTool('select')}
+          title="Выделение"
         >
-          Рука
+          ✥
+        </Button>
+        <Button
+          variant={tool === 'pen' ? 'primary' : 'outline-primary'}
+          onClick={() => setTool('pen')}
+          title="Карандаш"
+        >
+          ✏️
         </Button>
       </ButtonGroup>
-      <ButtonGroup as={Col} className="mb-3 p-2" style={{ zIndex: 11 }}>
-        <Button onClick={() => { setTool('select'); addText(syncUpdate); }}>Добавить текст</Button>
+
+      <ButtonGroup>
+        <Button 
+          variant="outline-success"
+          onClick={() => { setTool('select'); addText(syncUpdate); }}
+          title="Добавить текст"
+        >
+          🔤
+        </Button>
         <Form.Control
           type="file"
           accept="image/*"
@@ -67,11 +99,29 @@ const Toolbar = ({ tool, setTool, addText, setImages, images, color, setColor, s
           id="image-upload"
         />
         <Button
+          variant="outline-success"
           onClick={() => { setTool('select'); document.getElementById('image-upload').click(); }}
+          title="Добавить изображение"
         >
-          Добавить картинку
+          🖼️
         </Button>
       </ButtonGroup>
+
+      <InputGroup style={{ width: 'auto' }}>
+        <Button variant="outline-secondary" onClick={handleZoomOut} title="Уменьшить">➖</Button>
+        <Button variant="outline-secondary" onClick={handleZoomReset} title="Сбросить масштаб">
+          {Math.round(scale * 100)}%
+        </Button>
+        <Button variant="outline-secondary" onClick={handleZoomIn} title="Увеличить">➕</Button>
+      </InputGroup>
+
+      <Form.Control
+        type="color"
+        value={color}
+        onChange={(e) => setColor(e.target.value)}
+        style={{ width: '40px' }}
+        title="Выберите цвет"
+      />
     </div>
   );
 };

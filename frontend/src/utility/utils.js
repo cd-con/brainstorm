@@ -1,47 +1,49 @@
-﻿export const handleMouseDown = async (e, tool, isDrawing, lines, setLines, color, syncUpdate) => {
+﻿export const handleMouseDown = (e, tool, isDrawing, lines, setLines, color, syncUpdate, scale = 1, stagePos = {x: 0, y: 0}) => {
   if (tool !== 'pen') return;
+  
+  const stage = e.target.getStage();
+  if (!stage) return;
+
+  const pos = stage.getPointerPosition();
+  if (!pos) return;
+
+  const x = (pos.x - stagePos.x) / scale;
+  const y = (pos.y - stagePos.y) / scale;
+  
   isDrawing.current = true;
-  const pos = e.target.getStage().getPointerPosition();
-  const maxZIndex = lines.length > 0 ? Math.max(...lines.map((l) => l.zIndex || 0)) : 0;
   const newLine = {
     id: Date.now(),
-    points: [pos.x, pos.y],
-    color,
-    zIndex: maxZIndex + 1,
+    points: [x, y],
+    color: color,
+    zIndex: 0,
   };
-  setLines((prev) => [...prev, newLine]);
-  const response = await syncUpdate(newLine.id, 'line', newLine, () => {
-    setLines((prev) => prev.filter((l) => l.id !== newLine.id));
+  setLines([...lines, newLine]);
+  syncUpdate(newLine.id, 'line', newLine, () => {
+    setLines(prev => prev.filter(l => l.id !== newLine.id));
   });
-  if (!response.success) {
-    iAmBusy(`Failed to add line: ${response.error}`);
-  }
 };
 
-export const handleMouseMove = async (e, tool, isDrawing, lines, setLines, syncUpdate) => {
-  if (tool !== 'pen' || !isDrawing.current) return;
+export const handleMouseMove = (e, tool, isDrawing, lines, setLines, syncUpdate, scale = 1, stagePos = {x: 0, y: 0}) => {
+  if (!isDrawing.current || tool !== 'pen') return;
+  
   const stage = e.target.getStage();
-  const point = stage.getPointerPosition();
-  const lastLine = lines[lines.length - 1];
-  const newPoints = [...lastLine.points, point.x, point.y];
-  setLines((prev) =>
-    prev.map((line, index) =>
-      index === prev.length - 1 ? { ...line, points: newPoints } : line
-    )
-  );
-  const response = await syncUpdate(lastLine.id, 'line', { points: newPoints }, () => {
-    setLines((prev) =>
-      prev.map((line, index) =>
-        index === prev.length - 1 ? { ...line, points: lastLine.points } : line
-      )
-    );
-  });
-  if (!response.success) {
-    iAmBusy(`Failed to update line: ${response.error}`);
-    isDrawing.current = false;
-  }
-};
+  if (!stage) return;
 
+  const pos = stage.getPointerPosition();
+  if (!pos) return;
+
+  const x = (pos.x - stagePos.x) / scale;
+  const y = (pos.y - stagePos.y) / scale;
+  
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine) return;
+
+  lastLine.points = lastLine.points.concat([x, y]);
+  setLines([...lines.slice(0, -1), lastLine]);
+  syncUpdate(lastLine.id, 'line', lastLine, () => {
+    setLines(prev => prev.filter(l => l.id !== lastLine.id));
+  });
+};
 export const handleMouseUp = (isDrawing) => {
   isDrawing.current = false;
 };
