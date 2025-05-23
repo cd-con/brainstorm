@@ -3,6 +3,7 @@ import { Button, ButtonGroup, Form, InputGroup } from 'react-bootstrap';
 import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
 import { iAmBusy } from '../../utility/utils';
 import { useNavigate } from 'react-router';
+import ImageElement from './elements/ImageElement.js';
 
 const Toolbar = ({ 
   tool, 
@@ -22,7 +23,6 @@ const Toolbar = ({
   const navigate = useNavigate();
   const { syncUpdate, uploadImage } = useContext(WebSocketContext);
 
-  // Добавляем недостающую функцию
   const addImage = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -31,19 +31,20 @@ const Toolbar = ({
       const img = new window.Image();
       img.src = reader.result;
       img.onload = async () => {
-        const newImage = {
-          id: Date.now(),
-          image: img,
+        const newImage = new ImageElement(Date.now(), syncUpdate, {
           x: 50,
           y: 50,
           width: 100,
           height: 100,
+          image: img,
           zIndex: 1,
-        };
+        });
+        
         setImages((prev) => [...prev, newImage]);
-        const response = await syncUpdate(newImage.id, 'image', newImage, () => {
+        const response = await newImage.updateProperties(newImage.properties, () => {
           setImages((prev) => prev.filter((i) => i.id !== newImage.id));
         });
+        
         if (response.success) {
           uploadImage(newImage.id, reader.result);
         } else {
@@ -86,7 +87,7 @@ const Toolbar = ({
       <ButtonGroup>
         <Button 
           variant="outline-success"
-          onClick={() => { setTool('select'); addText(syncUpdate); }}
+          onClick={() => { setTool('select'); addText(); }}
           title="Добавить текст"
         >
           🔤

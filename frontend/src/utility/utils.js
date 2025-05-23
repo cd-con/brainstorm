@@ -1,4 +1,6 @@
-﻿export const handleMouseDown = (e, tool, isDrawing, lines, setLines, color, syncUpdate, scale = 1, stagePos = {x: 0, y: 0}) => {
+﻿import LineElement from '../pages/canvas/elements/LineElement.js';
+
+export const handleMouseDown = (e, tool, isDrawing, lines, setLines, color, syncUpdate, scale = 1, stagePos = {x: 0, y: 0}) => {
   if (tool !== 'pen') return;
   
   const stage = e.target.getStage();
@@ -11,14 +13,14 @@
   const y = (pos.y - stagePos.y) / scale;
   
   isDrawing.current = true;
-  const newLine = {
-    id: Date.now(),
+  const newLine = new LineElement(Date.now(), syncUpdate, {
     points: [x, y],
     color: color,
     zIndex: 0,
-  };
+  });
+  
   setLines([...lines, newLine]);
-  syncUpdate(newLine.id, 'line', newLine, () => {
+  syncUpdate(newLine.id, 'line', newLine.properties, () => {
     setLines(prev => prev.filter(l => l.id !== newLine.id));
   });
 };
@@ -38,12 +40,13 @@ export const handleMouseMove = (e, tool, isDrawing, lines, setLines, syncUpdate,
   const lastLine = lines[lines.length - 1];
   if (!lastLine) return;
 
-  lastLine.points = lastLine.points.concat([x, y]);
+  lastLine.properties.points = lastLine.properties.points.concat([x, y]);
   setLines([...lines.slice(0, -1), lastLine]);
-  syncUpdate(lastLine.id, 'line', lastLine, () => {
+  syncUpdate(lastLine.id, 'line', lastLine.properties, () => {
     setLines(prev => prev.filter(l => l.id !== lastLine.id));
   });
 };
+
 export const handleMouseUp = (isDrawing) => {
   isDrawing.current = false;
 };
@@ -51,11 +54,12 @@ export const handleMouseUp = (isDrawing) => {
 export const handleSelect = (id, type, selectObject) => {
   selectObject(id, type);
 };
+
 export const iAmBusy = (text) => {
-    window.addNotification({
-        title: 'Занято!',
-        message: text,
-        variant: 'warning',
-        delay: 3000
-    });
-}
+  window.addNotification({
+    title: 'Занято!',
+    message: text,
+    variant: 'warning',
+    delay: 3000
+  });
+};

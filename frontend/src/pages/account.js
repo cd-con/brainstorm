@@ -34,24 +34,56 @@ const UserProfile = () => {
     navigate(`/canvas/${roomId}`);
   };
 
-  const handleCreateRoom = () => {
-    if (newRoomName.trim()) {
-      const newRoom = {
-        id: `room-uuid-${Date.now()}`,
-        name: newRoomName,
-        isOwner: true,
-      };
+  const handleCreateRoom = async () => {
+  if (newRoomName.trim()) {
+    try {
+      const provider = new LoginProvider();
+      const response = await fetch('http://localhost:6942/rooms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provider.getToken()}`,
+        },
+        body: JSON.stringify({ name: newRoomName }),
+      });
+      if (!response.ok) throw new Error('Failed to create room');
+      const newRoom = await response.json();
       setRooms([...rooms, newRoom]);
       setNewRoomName('');
       setShowCreateModal(false);
+    } catch (error) {
+      window.addNotification({
+        title: 'Error',
+        message: 'Failed to create room',
+        variant: 'warning',
+        delay: 3000
+      });
     }
-  };
+  }
+};
 
-  const handleDeleteRoom = (roomId) => {
+const handleDeleteRoom = async (roomId) => {
+  try {
+    const provider = new LoginProvider();
+    const response = await fetch(`http://localhost:6942/rooms/${roomId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${provider.getToken()}`,
+      },
+    });
+    if (!response.ok) throw new Error('Failed to delete room');
     setRooms(rooms.filter((room) => room.id !== roomId));
     setShowDeleteModal(false);
     setRoomToDelete(null);
-  };
+  } catch (error) {
+    window.addNotification({
+      title: 'Error',
+      message: 'Failed to delete room',
+      variant: 'warning',
+      delay: 3000
+    });
+  }
+};
 
   const handleShowDeleteModal = (room) => {
     setRoomToDelete(room);

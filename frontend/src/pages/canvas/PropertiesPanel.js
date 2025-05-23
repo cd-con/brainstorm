@@ -10,16 +10,14 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
   if (!selectedId) {
     return <div className="p-3" style={{ background: '#f8f9fa' }}>Выберите объект для редактирования</div>;
   }
-  
+
   const [type, id] = selectedId.split('-');
   const selectedObject = 
-  type === 'line' ? lines.find((line) => line.id === parseInt(id)) :
-  type === 'text' ? texts.find((text) => text.id === parseInt(id)) :
-  type === 'image' ? images.find((img) => img.id === parseInt(id)) : 
-  null;
+    type === 'line' ? lines.find((line) => line.id === parseInt(id)) :
+    type === 'text' ? texts.find((text) => text.id === parseInt(id)) :
+    type === 'image' ? images.find((img) => img.id === parseInt(id)) : 
+    null;
 
-  // Дополнительная проверка
-  // DEPRECATED - возможно стоит убрать
   if (!selectedObject) {
     return <div className="p-3" style={{ background: '#f8f9fa' }}>Объект не выбран</div>;
   }
@@ -27,14 +25,10 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
   const handleTextChange = async (e) => {
     if (type === 'text') {
       const newText = e.target.value;
-      setTexts((prev) =>
-        prev.map((t) => (t.id === parseInt(id) ? { ...t, text: newText } : t))
+      const response = await selectedObject.updateProperties(
+        { text: newText },
+        (element) => setTexts(prev => prev.map(t => t.id === element.id ? element : t))
       );
-      const response = await syncUpdate(id, 'text', { text: newText }, () => {
-        setTexts((prev) =>
-          prev.map((t) => (t.id === parseInt(id) ? { ...t, text: selectedObject.text } : t))
-        );
-      });
       if (!response.success) {
         iAmBusy(`Не удалось обновить текст: ${response.error}`);
       }
@@ -44,30 +38,19 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
   const handleColorChange = async (e) => {
     const newColor = e.target.value;
     setColor(newColor);
-    if (type === 'text') {
-      setTexts((prev) =>
-        prev.map((t) => (t.id === parseInt(id) ? { ...t, fill: newColor } : t))
-      );
-      const response = await syncUpdate(id, 'text', { fill: newColor }, () => {
-        setTexts((prev) =>
-          prev.map((t) => (t.id === parseInt(id) ? { ...t, fill: selectedObject.fill } : t))
-        );
-      });
-      if (!response.success) {
-        iAmBusy(`Не удалось изменить цвет: ${response.error}`);
+    const propName = type === 'text' ? 'fill' : 'color';
+    const response = await selectedObject.updateProperties(
+      { [propName]: newColor },
+      (element) => {
+        if (type === 'text') {
+          setTexts(prev => prev.map(t => t.id === element.id ? element : t));
+        } else if (type === 'line') {
+          setLines(prev => prev.map(l => l.id === element.id ? element : l));
+        }
       }
-    } else if (type === 'line') {
-      setLines((prev) =>
-        prev.map((l) => (l.id === parseInt(id) ? { ...l, color: newColor } : l))
-      );
-      const response = await syncUpdate(id, 'line', { color: newColor }, () => {
-        setLines((prev) =>
-          prev.map((l) => (l.id === parseInt(id) ? { ...l, color: selectedObject.color } : l))
-        );
-      });
-      if (!response.success) {
-        iAmBusy(`Не удалось изменить цвет: ${response.error}`);
-      }
+    );
+    if (!response.success) {
+      iAmBusy(`Не удалось изменить цвет: ${response.error}`);
     }
   };
 
@@ -88,18 +71,13 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
           url: null
         };
         
-        setImages((prev) =>
-          prev.map((i) => (i.id === parseInt(id) ? { ...i, ...newImage } : i))
+        const response = await selectedObject.updateProperties(
+          newImage,
+          (element) => setImages(prev => prev.map(i => i.id === element.id ? element : i))
         );
         
-        const response = await syncUpdate(id, 'image', newImage, () => {
-          setImages((prev) =>
-            prev.map((i) => (i.id === parseInt(id) ? { ...i, ...selectedObject } : i))
-          );
-        });
-        
         if (response.success) {
-          await uploadImage(id, reader.result);
+          await uploadImage(selectedObject.id, reader.result);
         } else {
           iAmBusy(`Не удалось обновить изображение: ${response.error}`);
         }
@@ -122,15 +100,10 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
         image: null
       };
       
-      setImages((prev) =>
-        prev.map((i) => (i.id === parseInt(id) ? { ...i, ...newImage } : i))
+      const response = await selectedObject.updateProperties(
+        newImage,
+        (element) => setImages(prev => prev.map(i => i.id === element.id ? element : i))
       );
-      
-      const response = await syncUpdate(id, 'image', newImage, () => {
-        setImages((prev) =>
-          prev.map((i) => (i.id === parseInt(id) ? { ...i, ...selectedObject } : i))
-        );
-      });
       
       if (!response.success) {
         iAmBusy(`Не удалось обновить изображение: ${response.error}`);
@@ -145,31 +118,23 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
   const handleZIndexChange = async (e) => {
     const newZIndex = parseInt(e.target.value) || 0;
     
-    const updateStateAndSync = async (state, setState, objType) => {
-      setState((prev) =>
-        prev.map((item) => (item.id === parseInt(id) ? { ...item, zIndex: newZIndex } : item))
-      );
-      
-      const response = await syncUpdate(id, objType, { zIndex: newZIndex }, () => {
-        setState((prev) =>
-          prev.map((item) => (item.id === parseInt(id) ? { ...item, zIndex: selectedObject.zIndex } : item))
-        );
-      });
-      
-      if (!response.success) {
-        alert(`Не удалось обновить Z-индекс: ${response.error}`);
+    const response = await selectedObject.updateProperties(
+      { zIndex: newZIndex },
+      (element) => {
+        if (type === 'line') {
+          setLines(prev => prev.map(item => item.id === element.id ? element : item));
+        } else if (type === 'text') {
+          setTexts(prev => prev.map(item => item.id === element.id ? element : item));
+        } else if (type === 'image') {
+          setImages(prev => prev.map(item => item.id === element.id ? element : item));
+        }
       }
-    };
-
-    if (type === 'line') {
-      await updateStateAndSync(lines, setLines, 'line');
-    } else if (type === 'text') {
-      await updateStateAndSync(texts, setTexts, 'text');
-    } else if (type === 'image') {
-      await updateStateAndSync(images, setImages, 'image');
+    );
+    
+    if (!response.success) {
+      iAmBusy(`Не удалось обновить Z-индекс: ${response.error}`);
     }
   };
-
 
   return (
     <div className="p-3" style={{ background: '#f8f9fa', zIndex: 10 }}>
@@ -178,7 +143,7 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
         <InputGroup className="mb-3">
           <InputGroup.Text>Z-индекс</InputGroup.Text>
           <FormControl
-            value={selectedObject.zIndex || 0}
+            value={selectedObject.properties.zIndex || 0}
             type="number"
             onChange={handleZIndexChange}
             placeholder="Позиция по оси Z"
@@ -190,7 +155,7 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
             <InputGroup className="mb-3">
               <InputGroup.Text>Текст</InputGroup.Text>
               <FormControl
-                value={selectedObject.text}
+                value={selectedObject.properties.text}
                 onChange={handleTextChange}
                 placeholder="Введите текст"
               />
@@ -199,7 +164,7 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
               <InputGroup.Text>Цвет текста</InputGroup.Text>
               <FormControl
                 type="color"
-                value={selectedObject.fill}
+                value={selectedObject.properties.fill}
                 onChange={handleColorChange}
                 style={{ width: '50px' }}
               />
@@ -212,7 +177,7 @@ const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts,
             <InputGroup.Text>Цвет линии</InputGroup.Text>
             <FormControl
               type="color"
-              value={selectedObject.color}
+              value={selectedObject.properties.color}
               onChange={handleColorChange}
               style={{ width: '50px' }}
             />

@@ -1,6 +1,6 @@
 ﻿export default class LoginProvider {
   constructor(config = {}) {
-    this.baseUrl = config.baseUrl || 'https://api.example.com/auth';
+    this.baseUrl = config.baseUrl || 'https://localhost:6942/auth';
     this.headers = {
       'Content-Type': 'application/json',
       ...config.headers,
