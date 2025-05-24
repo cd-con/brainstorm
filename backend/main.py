@@ -1,53 +1,77 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Dict, List
+from pydantic import BaseModel, EmailStr, validator
 import json
 import os
 import base64
 from uuid import uuid4
-from pydantic import BaseModel
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 import uvicorn
+import socketio
+
+# Initialize FastAPI and Socket.IO
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins="*"
+)
+app.mount('/socket.io', socketio.ASGIApp(sio))
 
-# Mount static directory for images
+# Static files setup
 os.makedirs("static/images", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # JWT Configuration
-SECRET_KEY = "i-hate-rgb-0-0-0-people"  # In production, use environment variable
+SECRET_KEY = "i-hate-rgb-0-0-0-people"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Password hashing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-
-# In-memory storage
+# Storage class
 class Storage:
     def __init__(self):
-        self.users: Dict[str, dict] = {}  # email: {password_hash, username, ppic, rooms}
-        self.rooms: Dict[str, dict] = {}  # room_id: {name, owner_email}
-        self.canvas: Dict[str, dict] = {}  # room_id: {lines, texts, images}
-        self.locked_objects: Dict[str, str] = {}  # object_id: client_id
-        self.clients: Dict[str, WebSocket] = {}  # client_id: websocket
-
+        self.users: Dict[str, dict] = {}
+        self.rooms: Dict[str, dict] = {}
+        self.canvas: Dict[str, dict] = {}
+        self.locked_objects: Dict[str, str] = {}
+        self.clients: Dict[str, str] = {}  # Maps client_id to sid
 
 storage = Storage()
 
-
-# Models
+# Pydantic models
 class UserCreate(BaseModel):
-    email: str
+    email: EmailStr
     username: str
     password: str
     ppic: str = ""
 
+    @validator('password')
+    def password_length(cls, v):
+        if len(v) < 6:
+            raise ValueError('password must be at least 6 characters long')
+        return v
+
+    @validator('username')
+    def username_not_empty(cls, v):
+        if not v.strip():
+            raise ValueError('username cannot be empty')
+        return v
 
 class User(BaseModel):
     email: str
@@ -55,31 +79,19 @@ class User(BaseModel):
     ppic: str
     rooms: List[dict]
 
-
 class RoomCreate(BaseModel):
     name: str
 
+class ImageUpload(BaseModel):
+    dataUrl: str
 
-class CanvasElement(BaseModel):
-    id: str
-    properties: dict
-
-
-class UpdateMessage(BaseModel):
-    type: str
-    id: str
-    objectType: str
-    data: dict
-
-
-# JWT Helper Functions
+# JWT Functions
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
-
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -91,25 +103,27 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
-
-# Auth Endpoints
+# Authentication Endpoints
 @app.post("/auth/register")
 async def register(user: UserCreate):
-    if user.email in storage.users:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    try:
+        if user.email in storage.users:
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed_password = pwd_context.hash(user.password)
-    storage.users[user.email] = {
-        "email": user.email,
-        "username": user.username,
-        "password_hash": hashed_password,
-        "ppic": user.ppic,
-        "rooms": []
-    }
+        hashed_password = pwd_context.hash(user.password)
+        storage.users[user.email] = {
+            "email": user.email,
+            "username": user.username,
+            "password_hash": hashed_password,
+            "ppic": user.ppic,
+            "rooms": []
+        }
 
-    token = create_access_token({"sub": user.email})
-    return {"token": token}
-
+        token = create_access_token({"sub": user.email})
+        return {"token": token}
+    except Exception as e:
+        print(f"Registration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @app.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -120,19 +134,16 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     token = create_access_token({"sub": user["email"]})
     return {"token": token}
 
-
 @app.post("/auth/refresh")
 async def refresh_token(current_user: dict = Depends(get_current_user)):
     token = create_access_token({"sub": current_user["email"]})
-    return {"token": token}
-
+    return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/auth/logout")
 async def logout(current_user: dict = Depends(get_current_user)):
     return {"success": True}
 
-
-@app.get("/auth/profile", response_model=User)
+@app.get("/users/profile", response_model=User)
 async def get_profile(current_user: dict = Depends(get_current_user)):
     return {
         "email": current_user["email"],
@@ -141,23 +152,22 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
         "rooms": [
             {"id": room_id, "name": room_data["name"], "isOwner": room_data["owner_email"] == current_user["email"]}
             for room_id, room_data in storage.rooms.items()
-            if room_data["owner_email"] == current_user["email"]
+            if room_id in storage.users[current_user["email"]]["rooms"]
         ]
     }
 
-
-# Room Endpoints
+# Room Management
 @app.post("/rooms")
 async def create_room(room: RoomCreate, current_user: dict = Depends(get_current_user)):
-    room_id = f"room-uuid-{uuid4()}"
+    room_id = f"room-{uuid4()}"
     storage.rooms[room_id] = {
         "name": room.name,
-        "owner_email": current_user["email"]
+        "owner_email": current_user["email"],
+        "members": [current_user["email"]]
     }
     storage.users[current_user["email"]]["rooms"].append(room_id)
     storage.canvas[room_id] = {"lines": [], "texts": [], "images": []}
     return {"id": room_id, "name": room.name, "isOwner": True}
-
 
 @app.delete("/rooms/{room_id}")
 async def delete_room(room_id: str, current_user: dict = Depends(get_current_user)):
@@ -167,171 +177,201 @@ async def delete_room(room_id: str, current_user: dict = Depends(get_current_use
         raise HTTPException(status_code=403, detail="Not room owner")
 
     del storage.rooms[room_id]
-    storage.users[current_user["email"]]["rooms"] = [
-        r for r in storage.users[current_user["email"]]["rooms"] if r != room_id
-    ]
+    for user_email in storage.users:
+        storage.users[user_email]["rooms"] = [
+            r for r in storage.users[user_email]["rooms"] if r != room_id
+        ]
     if room_id in storage.canvas:
         del storage.canvas[room_id]
     return {"success": True}
 
+# Image Upload
+@app.post("/images/{image_id}")
+async def upload_image(image_id: str, image: ImageUpload, current_user: dict = Depends(get_current_user)):
+    try:
+        img_data = base64.b64decode(image.dataUrl.split(",")[1])
+        img_path = f"static/images/{image_id}.png"
+        with open(img_path, "wb") as f:
+            f.write(img_data)
+        return {"success": True, "url": f"/static/images/{image_id}.png"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to upload image: {str(e)}")
 
-# WebSocket Endpoint
-@app.websocket("/canvas/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str):
+# Socket.IO Event Handlers
+@sio.event
+async def connect(sid, environ):
+    token = environ.get('HTTP_TOKEN') or environ.get('QUERY_STRING', '').split('token=')[1] if 'token=' in environ.get('QUERY_STRING', '') else None
+    if not token:
+        await sio.disconnect(sid)
+        return False
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
-        if email not in storage.users or room_id not in storage.rooms:
-            await websocket.close(code=4001)
-            return
+        if email not in storage.users:
+            await sio.disconnect(sid)
+            return False
+        # Store token in session for later use
+        await sio.save_session(sid, {'token': token})
     except JWTError:
-        await websocket.close(code=4001)
+        await sio.disconnect(sid)
+        return False
+
+    client_id = str(uuid4())
+    storage.clients[client_id] = sid
+    print(f"Client {client_id} connected with SID {sid}")
+    return True
+
+@sio.event
+async def join(sid, data):
+    room_id = data.get('room_id')
+    if not room_id:
+        await sio.emit('error', {'error': 'No room_id provided'}, to=sid)
         return
 
-    await websocket.accept()
-    client_id = str(uuid4())
-    storage.clients[client_id] = websocket
-
+    # Find user email from token
+    token = (await sio.get_session(sid)).get('token')
     try:
-        # Initialize canvas if not exists
-        if room_id not in storage.canvas:
-            storage.canvas[room_id] = {"lines": [], "texts": [], "images": []}
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+    except JWTError:
+        await sio.disconnect(sid)
+        return
 
-        # Send initial state
-        await websocket.send_json({
+    if room_id not in storage.rooms or email not in storage.rooms[room_id]["members"]:
+        await sio.emit('error', {'error': 'Invalid room or not a member'}, to=sid)
+        return
+
+    sio.enter_room(sid, room_id)
+    if room_id in storage.canvas:
+        await sio.emit('init', {
             "type": "init",
+            "room_id": room_id,
             "data": storage.canvas[room_id]
-        })
+        }, to=sid)
+    print(f"Client {sid} joined room {room_id}")
 
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
+@sio.event
+async def message(sid, message):
+    room_id = message.get("room_id")
+    client_id = next((cid for cid, s in storage.clients.items() if s == sid), None)
+    if not client_id:
+        await sio.emit('error', {'error': 'Client not found'}, to=sid)
+        return
 
-            if message["type"] == "join":
-                continue
+    # Validate user and room
+    token = (await sio.get_session(sid)).get('token')
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+    except JWTError:
+        await sio.disconnect(sid)
+        return
 
-            elif message["type"] == "select":
-                object_key = f"{message['objectType']}-{message['id']}"
-                if object_key not in storage.locked_objects:
-                    storage.locked_objects[object_key] = client_id
-                    await websocket.send_json({
-                        "type": "select",
-                        "id": message["id"],
-                        "objectType": message["objectType"],
-                        "canEdit": True
-                    })
+    if room_id not in storage.rooms or email not in storage.rooms[room_id]["members"]:
+        await sio.emit('error', {'error': 'Invalid room or not a member'}, to=sid)
+        return
+
+    print(f"MESSAGE -> {message['type']}")
+    if message["type"] in ["line", "text", "image"]:
+        object_type = message["type"]
+        element_id = message["id"]
+        properties = message.get("properties")
+        object_key = f"{object_type}-{element_id}"
+
+        if properties is None:
+            storage_type = {
+                "line": storage.canvas[room_id]["lines"],
+                "text": storage.canvas[room_id]["texts"],
+                "image": storage.canvas[room_id]["images"]
+            }[object_type]
+            storage_type[:] = [e for e in storage_type if e["id"] != element_id]
+            if object_key in storage.locked_objects:
+                del storage.locked_objects[object_key]
+
+            await sio.emit('message', {
+                "type": object_type,
+                "id": element_id,
+                "properties": None,
+                "success": True
+            }, to=sid)
+
+            await sio.emit('message', {
+                "type": object_type,
+                "id": element_id,
+                "room_id": room_id,
+                "properties": None
+            }, room=room_id, skip_sid=sid)
+
+        else:
+            if object_key not in storage.locked_objects or storage.locked_objects[object_key] == client_id:
+                storage_type = {
+                    "line": storage.canvas[room_id]["lines"],
+                    "text": storage.canvas[room_id]["texts"],
+                    "image": storage.canvas[room_id]["images"]
+                }[object_type]
+
+                for i, element in enumerate(storage_type):
+                    if element["id"] == element_id:
+                        storage_type[i] = {"id": element_id, "properties": properties}
+                        break
                 else:
-                    await websocket.send_json({
-                        "type": "select",
-                        "id": message["id"],
-                        "objectType": message["objectType"],
-                        "canEdit": False
-                    })
+                    storage_type.append({"id": element_id, "properties": properties})
 
-            elif message["type"] == "deselect":
-                object_key = f"{message['objectType']}-{message['id']}"
-                if object_key in storage.locked_objects:
-                    del storage.locked_objects[object_key]
+                await sio.emit('message', {
+                    "type": object_type,
+                    "id": element_id,
+                    "properties": properties,
+                    "success": True
+                }, to=sid)
 
-            elif message["type"] == "update":
-                object_type = message["objectType"]
-                element_id = message["id"]
-                object_key = f"{object_type}-{element_id}"
+                await sio.emit('message', {
+                    "type": object_type,
+                    "id": element_id,
+                    "room_id": room_id,
+                    "properties": properties
+                }, room=room_id, skip_sid=sid)
+            else:
+                await sio.emit('message', {
+                    "type": object_type,
+                    "id": element_id,
+                    "success": False,
+                    "error": "Object is locked by another user"
+                }, to=sid)
 
-                if object_key not in storage.locked_objects or storage.locked_objects[object_key] == client_id:
-                    storage_type = {
-                        "line": storage.canvas[room_id]["lines"],
-                        "text": storage.canvas[room_id]["texts"],
-                        "image": storage.canvas[room_id]["images"]
-                    }[object_type]
+    elif message["type"] == "select":
+        object_key = f"{message['type']}-{message['id']}"
+        if object_key not in storage.locked_objects:
+            storage.locked_objects[object_key] = client_id
+            await sio.emit('message', {
+                "type": "select",
+                "id": message["id"],
+                "objectType": message["type"],
+                "canEdit": True
+            }, to=sid)
+        else:
+            await sio.emit('message', {
+                "type": "select",
+                "id": message["id"],
+                "objectType": message["type"],
+                "canEdit": False
+            }, to=sid)
 
-                    for i, element in enumerate(storage_type):
-                        if element["id"] == element_id:
-                            storage_type[i] = {"id": element_id, "properties": message["data"]}
-                            break
-                    else:
-                        storage_type.append({"id": element_id, "properties": message["data"]})
+    elif message["type"] == "deselect":
+        object_key = f"{message['type']}-{message['id']}"
+        if object_key in storage.locked_objects:
+            del storage.locked_objects[object_key]
 
-                    await websocket.send_json({
-                        "type": "update",
-                        "id": element_id,
-                        "objectType": object_type,
-                        "success": True
-                    })
-
-                    for other_client_id, other_ws in storage.clients.items():
-                        if other_client_id != client_id:
-                            await other_ws.send_json({
-                                "type": "update",
-                                "id": element_id,
-                                "objectType": object_type,
-                                "data": message["data"]
-                            })
-                else:
-                    await websocket.send_json({
-                        "type": "update",
-                        "id": element_id,
-                        "objectType": object_type,
-                        "success": False,
-                        "error": "Object is locked by another user"
-                    })
-
-            elif message["type"] == "image":
-                try:
-                    img_data = base64.b64decode(message["base64"].split(",")[1])
-                    img_id = message["id"]
-                    img_path = f"static/images/{img_id}.png"
-
-                    with open(img_path, "wb") as f:
-                        f.write(img_data)
-
-                    for i, img in enumerate(storage.canvas[room_id]["images"]):
-                        if img["id"] == img_id:
-                            storage.canvas[room_id]["images"][i] = {
-                                "id": img_id,
-                                "properties": {
-                                    **img["properties"],
-                                    "url": f"/static/images/{img_id}.png"
-                                }
-                            }
-                            break
-                    else:
-                        storage.canvas[room_id]["images"].append({
-                            "id": img_id,
-                            "properties": {"url": f"/static/images/{img_id}.png"}
-                        })
-
-                    await websocket.send_json({
-                        "type": "image",
-                        "id": img_id,
-                        "success": True,
-                        "url": f"/static/images/{img_id}.png"
-                    })
-
-                    for other_client_id, other_ws in storage.clients.items():
-                        if other_client_id != client_id:
-                            await other_ws.send_json({
-                                "type": "image",
-                                "id": img_id,
-                                "success": True,
-                                "url": f"/static/images/{img_id}.png"
-                            })
-
-                except Exception as e:
-                    await websocket.send_json({
-                        "type": "image",
-                        "id": message["id"],
-                        "success": False,
-                        "error": str(e)
-                    })
-
-    except WebSocketDisconnect:
+@sio.event
+async def disconnect(sid):
+    client_id = next((cid for cid, s in storage.clients.items() if s == sid), None)
+    if client_id:
         del storage.clients[client_id]
         storage.locked_objects = {
             k: v for k, v in storage.locked_objects.items()
             if v != client_id
         }
-
+    print(f"Client {sid} disconnected")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=6942)
+    uvicorn.run(app, host="localhost", port=6943)

@@ -1,128 +1,78 @@
-﻿import React, { useContext } from 'react';
-import { Button, ButtonGroup, Form, InputGroup } from 'react-bootstrap';
-import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
-import { iAmBusy } from '../../utility/utils';
-import { useNavigate } from 'react-router';
-import ImageElement from './elements/ImageElement.js';
+﻿import { useContext } from 'react';
+import { WebSocketContext } from '../../providers/WebSocketProvider';
+import TextElement from './elements/TextElement';
+import ImageElement from './elements/ImageElement';
 
-const Toolbar = ({ 
-  tool, 
-  setTool, 
-  addText, 
-  setImages, 
-  images, 
-  color, 
-  setColor, 
-  selectedId, 
-  setLines, 
-  setTexts,
-  scale,
-  setScale,
-  setStagePos
-}) => {
-  const navigate = useNavigate();
-  const { syncUpdate, uploadImage } = useContext(WebSocketContext);
+const Toolbar = ({ tool, setTool, color, setColor, setTexts, setImages, scale, setScale, setStagePos }) => {
+  const { syncUpdate } = useContext(WebSocketContext);
 
-  const addImage = async (e) => {
+  const addText = () => {
+    const newText = new TextElement(Date.now(), syncUpdate, {
+      x: 50,
+      y: 50,
+      text: 'New Text',
+      fontSize: 20,
+      fill: color,
+      zIndex: 0
+    });
+    setTexts((prev) => [...prev, newText]);
+    syncUpdate(newText.id, 'text', newText.properties);
+  };
+
+  const addImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const img = new window.Image();
+      const img = new Image();
       img.src = reader.result;
-      img.onload = async () => {
+      img.onload = () => {
         const newImage = new ImageElement(Date.now(), syncUpdate, {
           x: 50,
           y: 50,
           width: 100,
           height: 100,
-          image: img,
-          zIndex: 1,
+          url: reader.result,
+          zIndex: 0
         });
-        
         setImages((prev) => [...prev, newImage]);
-        const response = await newImage.updateProperties(newImage.properties, () => {
-          setImages((prev) => prev.filter((i) => i.id !== newImage.id));
-        });
-        
-        if (response.success) {
-          uploadImage(newImage.id, reader.result);
-        } else {
-          iAmBusy(`Failed to add image: ${response.error}`);
-          setImages((prev) => prev.filter((i) => i.id !== newImage.id));
-        }
+        syncUpdate(newImage.id, 'image', newImage.properties);
       };
     };
     reader.readAsDataURL(file);
   };
 
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 4));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.1));
-  const handleZoomReset = () => {
-    setScale(1);
-    setStagePos({ x: 0, y: 0 });
-  };
-
   return (
-    <div className="d-flex flex-wrap align-items-center gap-3 p-2 bg-light border-bottom">
-      <Button variant="outline-secondary" onClick={() => navigate("/you")}>🚪</Button>
-
-      <ButtonGroup>
-        <Button
-          variant={tool === 'select' ? 'primary' : 'outline-primary'}
-          onClick={() => setTool('select')}
-          title="Выделение"
-        >
-          ✥
-        </Button>
-        <Button
-          variant={tool === 'pen' ? 'primary' : 'outline-primary'}
-          onClick={() => setTool('pen')}
-          title="Карандаш"
-        >
-          ✏️
-        </Button>
-      </ButtonGroup>
-
-      <ButtonGroup>
-        <Button 
-          variant="outline-success"
-          onClick={() => { setTool('select'); addText(); }}
-          title="Добавить текст"
-        >
-          🔤
-        </Button>
-        <Form.Control
-          type="file"
-          accept="image/*"
-          onChange={addImage}
-          style={{ display: 'none' }}
-          id="image-upload"
-        />
-        <Button
-          variant="outline-success"
-          onClick={() => { setTool('select'); document.getElementById('image-upload').click(); }}
-          title="Добавить изображение"
-        >
-          🖼️
-        </Button>
-      </ButtonGroup>
-
-      <InputGroup style={{ width: 'auto' }}>
-        <Button variant="outline-secondary" onClick={handleZoomOut} title="Уменьшить">➖</Button>
-        <Button variant="outline-secondary" onClick={handleZoomReset} title="Сбросить масштаб">
-          {Math.round(scale * 100)}%
-        </Button>
-        <Button variant="outline-secondary" onClick={handleZoomIn} title="Увеличить">➕</Button>
-      </InputGroup>
-
-      <Form.Control
-        type="color"
-        value={color}
-        onChange={(e) => setColor(e.target.value)}
-        style={{ width: '40px' }}
-        title="Выберите цвет"
-      />
+    <div style={{ display: 'flex', gap: '8px', padding: '8px', background: '#f8f9fa', borderBottom: '1px solid #dee2e6' }}>
+      <button
+        style={{ padding: '4px 8px', background: tool === 'select' ? '#007bff' : '#fff', color: tool === 'select' ? '#fff' : '#000', border: '1px solid #007bff' }}
+        onClick={() => setTool('select')}
+      >
+        ✥
+      </button>
+      <button
+        style={{ padding: '4px 8px', background: tool === 'pen' ? '#007bff' : '#fff', color: tool === 'pen' ? '#fff' : '#000', border: '1px solid #007bff' }}
+        onClick={() => setTool('pen')}
+      >
+        ✏️
+      </button>
+      <button style={{ padding: '4px 8px', border: '1px solid #28a745' }} onClick={() => { setTool('select'); addText(); }}>
+        🔤
+      </button>
+      <input type="file" accept="image/*" onChange={addImage} style={{ display: 'none' }} id="image-upload" />
+      <button style={{ padding: '4px 8px', border: '1px solid #28a745' }} onClick={() => { setTool('select'); document.getElementById('image-upload').click(); }}>
+        🖼️
+      </button>
+      <button style={{ padding: '4px 8px', border: '1px solid #6c757d' }} onClick={() => setScale((p) => Math.max(p - 0.1, 0.1))}>
+        ➖
+      </button>
+      <button style={{ padding: '4px 8px', border: '1px solid #6c757d' }} onClick={() => { setScale(1); setStagePos({ x: 0, y: 0 }); }}>
+        {Math.round(scale * 100)}%
+      </button>
+      <button style={{ padding: '4px 8px', border: '1px solid #6c757d' }} onClick={() => setScale((p) => Math.min(p + 0.1, 4))}>
+        ➕
+      </button>
+      <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: '40px', border: 'none' }} />
     </div>
   );
 };

@@ -1,215 +1,146 @@
-﻿import React, { useContext, useState } from 'react';
-import { Form, FormControl, InputGroup, Button } from 'react-bootstrap';
-import { WebSocketContext } from '../../providers/room/WebSocketProvider.js';
-import { iAmBusy } from '../../utility/utils';
+﻿import { useContext, useState } from 'react';
+import { WebSocketContext } from '../../providers/WebSocketProvider';
 
 const PropertiesPanel = ({ selectedId, lines, texts, images, setLines, setTexts, setImages, color, setColor }) => {
-  const { syncUpdate, uploadImage } = useContext(WebSocketContext);
-  const [imageUrl, setImageUrl] = useState('');
+  const { syncUpdate } = useContext(WebSocketContext);
+  const [imgUrl, setImgUrl] = useState('');
+  const [textInput, setTextInput] = useState('');
 
-  if (!selectedId) {
-    return <div className="p-3" style={{ background: '#f8f9fa' }}>Выберите объект для редактирования</div>;
-  }
+  if (!selectedId) return <div style={{ padding: '16px', background: '#f8f9fa' }}>Select object</div>;
 
   const [type, id] = selectedId.split('-');
-  const selectedObject = 
-    type === 'line' ? lines.find((line) => line.id === parseInt(id)) :
-    type === 'text' ? texts.find((text) => text.id === parseInt(id)) :
-    type === 'image' ? images.find((img) => img.id === parseInt(id)) : 
-    null;
+  const obj = type === 'line' ? lines.find((l) => l.id == id) : type === 'text' ? texts.find((t) => t.id == id) : images.find((i) => i.id == id);
+  if (!obj) return <div style={{ padding: '16px', background: '#f8f9fa' }}>No object selected</div>;
 
-  if (!selectedObject) {
-    return <div className="p-3" style={{ background: '#f8f9fa' }}>Объект не выбран</div>;
-  }
-
-  const handleTextChange = async (e) => {
-    if (type === 'text') {
-      const newText = e.target.value;
-      const response = await selectedObject.updateProperties(
-        { text: newText },
-        (element) => setTexts(prev => prev.map(t => t.id === element.id ? element : t))
-      );
-      if (!response.success) {
-        iAmBusy(`Не удалось обновить текст: ${response.error}`);
+  const handleTextChange = (e) => {
+    const text = e.target.value;
+    setTextInput(text);
+    setTexts((prev) => {
+      const index = prev.findIndex((t) => t.id === id);
+      if (index !== -1) {
+        prev[index].properties = { ...prev[index].properties, text };
+        return [...prev];
       }
-    }
+      return prev;
+    });
   };
 
-  const handleColorChange = async (e) => {
+  const handleTextBlur = async () => {
+    if (type !== 'text') return;
+    await syncUpdate(id, type, { text: textInput });
+  };
+
+  const updateColor = async (e) => {
     const newColor = e.target.value;
     setColor(newColor);
-    const propName = type === 'text' ? 'fill' : 'color';
-    const response = await selectedObject.updateProperties(
-      { [propName]: newColor },
-      (element) => {
-        if (type === 'text') {
-          setTexts(prev => prev.map(t => t.id === element.id ? element : t));
-        } else if (type === 'line') {
-          setLines(prev => prev.map(l => l.id === element.id ? element : l));
-        }
+    const prop = type === 'text' ? 'fill' : 'color';
+    const setState = type === 'text' ? setTexts : setLines;
+    setState((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index !== -1) {
+        prev[index].properties = { ...prev[index].properties, [prop]: newColor };
+        return [...prev];
       }
-    );
-    if (!response.success) {
-      iAmBusy(`Не удалось изменить цвет: ${response.error}`);
-    }
+      return prev;
+    });
+    await syncUpdate(id, type, { [prop]: newColor });
   };
 
-  const handleImageUpload = async (e) => {
+  const updateImage = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = async () => {
-      const img = new window.Image();
+      const img = new Image();
       img.src = reader.result;
-      
       img.onload = async () => {
-        const newImage = { 
-          image: img, 
-          width: img.width, 
-          height: img.height,
-          url: null
-        };
-        
-        const response = await selectedObject.updateProperties(
-          newImage,
-          (element) => setImages(prev => prev.map(i => i.id === element.id ? element : i))
-        );
-        
-        if (response.success) {
-          await uploadImage(selectedObject.id, reader.result);
-        } else {
-          iAmBusy(`Не удалось обновить изображение: ${response.error}`);
-        }
+        setImages((prev) => {
+          const index = prev.findIndex((i) => i.id === id);
+          if (index !== -1) {
+            prev[index].properties = { ...prev[index].properties, url: reader.result, width: img.width, height: img.height };
+            return [...prev];
+          }
+          return prev;
+        });
+        await syncUpdate(id, type, { url: reader.result, width: img.width, height: img.height });
       };
     };
     reader.readAsDataURL(file);
   };
 
-  const handleImageUrlChange = async () => {
-    if (!imageUrl) return;
-    
-    const img = new window.Image();
-    img.src = imageUrl;
-    
+  const updateImageUrl = async () => {
+    if (!imgUrl) return;
+    const img = new Image();
+    img.src = imgUrl;
     img.onload = async () => {
-      const newImage = { 
-        url: imageUrl,
-        width: img.width,
-        height: img.height,
-        image: null
-      };
-      
-      const response = await selectedObject.updateProperties(
-        newImage,
-        (element) => setImages(prev => prev.map(i => i.id === element.id ? element : i))
-      );
-      
-      if (!response.success) {
-        iAmBusy(`Не удалось обновить изображение: ${response.error}`);
-      }
-    };
-    
-    img.onerror = () => {
-      iAmBusy('Не удалось загрузить изображение по указанной ссылке');
+      setImages((prev) => {
+        const index = prev.findIndex((i) => i.id === id);
+        if (index !== -1) {
+          prev[index].properties = { ...prev[index].properties, url: imgUrl, width: img.width, height: img.height };
+          return [...prev];
+        }
+        return prev;
+      });
+      await syncUpdate(id, type, { url: imgUrl, width: img.width, height: img.height });
     };
   };
 
-  const handleZIndexChange = async (e) => {
-    const newZIndex = parseInt(e.target.value) || 0;
-    
-    const response = await selectedObject.updateProperties(
-      { zIndex: newZIndex },
-      (element) => {
-        if (type === 'line') {
-          setLines(prev => prev.map(item => item.id === element.id ? element : item));
-        } else if (type === 'text') {
-          setTexts(prev => prev.map(item => item.id === element.id ? element : item));
-        } else if (type === 'image') {
-          setImages(prev => prev.map(item => item.id === element.id ? element : item));
-        }
+  const updateZIndex = async (e) => {
+    const zIndex = +e.target.value || 0;
+    const setState = type === 'line' ? setLines : type === 'text' ? setTexts : setImages;
+    setState((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index !== -1) {
+        prev[index].properties = { ...prev[index].properties, zIndex };
+        return [...prev];
       }
-    );
-    
-    if (!response.success) {
-      iAmBusy(`Не удалось обновить Z-индекс: ${response.error}`);
-    }
+      return prev;
+    });
+    await syncUpdate(id, type, { zIndex });
   };
 
   return (
-    <div className="p-3" style={{ background: '#f8f9fa', zIndex: 10 }}>
-      <h5>Свойства объекта</h5>
-      <Form onSubmit={(e) => e.preventDefault()}>
-        <InputGroup className="mb-3">
-          <InputGroup.Text>Z-индекс</InputGroup.Text>
-          <FormControl
-            value={selectedObject.properties.zIndex || 0}
-            type="number"
-            onChange={handleZIndexChange}
-            placeholder="Позиция по оси Z"
-          />
-        </InputGroup>
-
-        {type === 'text' && (
-          <>
-            <InputGroup className="mb-3">
-              <InputGroup.Text>Текст</InputGroup.Text>
-              <FormControl
-                value={selectedObject.properties.text}
-                onChange={handleTextChange}
-                placeholder="Введите текст"
-              />
-            </InputGroup>
-            <InputGroup className="mb-3">
-              <InputGroup.Text>Цвет текста</InputGroup.Text>
-              <FormControl
-                type="color"
-                value={selectedObject.properties.fill}
-                onChange={handleColorChange}
-                style={{ width: '50px' }}
-              />
-            </InputGroup>
-          </>
-        )}
-
-        {type === 'line' && (
-          <InputGroup className="mb-3">
-            <InputGroup.Text>Цвет линии</InputGroup.Text>
-            <FormControl
-              type="color"
-              value={selectedObject.properties.color}
-              onChange={handleColorChange}
-              style={{ width: '50px' }}
+    <div style={{ padding: '16px', background: '#f8f9fa' }}>
+      <h5>Object Properties</h5>
+      <div style={{ marginBottom: '8px' }}>
+        <label>Z-index: </label>
+        <input type="number" value={obj.properties.zIndex || 0} onChange={updateZIndex} style={{ width: '100%' }} />
+      </div>
+      {type === 'text' && (
+        <>
+          <div style={{ marginBottom: '8px' }}>
+            <label>Text: </label>
+            <input
+              type="text"
+              value={textInput || obj.properties.text}
+              onChange={handleTextChange}
+              onBlur={handleTextBlur}
+              style={{ width: '100%' }}
             />
-          </InputGroup>
-        )}
-
-        {type === 'image' && (
-          <>
-            <InputGroup className="mb-3">
-              <FormControl
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                placeholder="Загрузить изображение"
-              />
-            </InputGroup>
-            <InputGroup className="mb-3">
-              <FormControl
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="Ссылка на изображение"
-              />
-              <Button 
-                variant="outline-secondary" 
-                onClick={handleImageUrlChange}
-              >
-                Обновить
-              </Button>
-            </InputGroup>
-          </>
-        )}
-      </Form>
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <label>Text Color: </label>
+            <input type="color" value={obj.properties.fill} onChange={updateColor} style={{ width: '50px' }} />
+          </div>
+        </>
+      )}
+      {type === 'line' && (
+        <div style={{ marginBottom: '8px' }}>
+          <label>Line Color: </label>
+          <input type="color" value={obj.properties.color} onChange={updateColor} style={{ width: '50px' }} />
+        </div>
+      )}
+      {type === 'image' && (
+        <>
+          <div style={{ marginBottom: '8px' }}>
+            <input type="file" accept="image/*" onChange={updateImage} style={{ width: '100%' }} />
+          </div>
+          <div style={{ marginBottom: '8px', display: 'flex', gap: '8px' }}>
+            <input type="text" value={imgUrl} onChange={(e) => setImgUrl(e.target.value)} placeholder="Image URL" style={{ width: '100%' }} />
+            <button onClick={updateImageUrl}>Update</button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

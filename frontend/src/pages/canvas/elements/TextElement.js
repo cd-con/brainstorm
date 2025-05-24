@@ -2,16 +2,11 @@
 import { Text } from 'react-konva';
 
 class TextElement extends BaseElement {
-  constructor(id, syncUpdate, properties = {}) {
-    super(id, 'text', syncUpdate, {
-      text: 'New Text',
-      fontSize: 20,
-      fill: '#000000',
-      ...properties
-    });
+  constructor(id, syncUpdate, props = {}) {
+    super(id, 'text', syncUpdate, { text: 'New Text', fontSize: 20, fill: '#000000', ...props });
   }
 
-  getKonvaComponent({ tool, scale, handleSelect, handleDragEnd }) {
+  getKonvaComponent({ tool, scale, setSelectedId, setState }) {
     return (
       <Text
         key={`text-${this.id}`}
@@ -24,11 +19,11 @@ class TextElement extends BaseElement {
         draggable={tool === 'select'}
         onClick={(e) => {
           if (tool === 'select') {
-            handleSelect(this);
+            setSelectedId(`text-${this.id}`);
             e.cancelBubble = true;
           }
         }}
-        onDragEnd={(e) => handleDragEnd(this, e)}
+        onDragEnd={(e) => this.handleDragEnd(e, setState)}
       />
     );
   }

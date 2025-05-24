@@ -2,15 +2,11 @@
 import { Line } from 'react-konva';
 
 class LineElement extends BaseElement {
-  constructor(id, syncUpdate, properties = {}) {
-    super(id, 'line', syncUpdate, {
-      points: [],
-      color: '#000000',
-      ...properties
-    });
+  constructor(id, syncUpdate, props = {}) {
+    super(id, 'line', syncUpdate, { points: [], color: '#000000', ...props });
   }
 
-  getKonvaComponent({ tool, scale, handleSelect, handleDragEnd }) {
+  getKonvaComponent({ tool, scale, setSelectedId, setState }) {
     return (
       <Line
         key={`line-${this.id}`}
@@ -25,11 +21,11 @@ class LineElement extends BaseElement {
         y={this.properties.y}
         onClick={(e) => {
           if (tool === 'select') {
-            handleSelect(this);
+            setSelectedId(`line-${this.id}`);
             e.cancelBubble = true;
           }
         }}
-        onDragEnd={(e) => handleDragEnd(this, e)}
+        onDragEnd={(e) => this.handleDragEnd(e, setState)}
       />
     );
   }

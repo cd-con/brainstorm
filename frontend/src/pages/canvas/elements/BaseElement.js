@@ -1,80 +1,49 @@
 ﻿class BaseElement {
-  constructor(id, type, syncUpdate, properties = {}) {
+  constructor(id, type, syncUpdate, props = {}) {
+    if (typeof syncUpdate !== 'function') {
+      console.error(`syncUpdate must be a function, received: ${syncUpdate}`);
+      throw new Error('syncUpdate must be a function');
+    }
     this.id = id;
     this.type = type;
     this.syncUpdate = syncUpdate;
-    this.properties = {
-      x: 0,
-      y: 0,
-      zIndex: 0,
-      ...properties
-    };
+    this.properties = { x: 0, y: 0, zIndex: 0, ...props };
   }
 
-  // Method to get Konva component for rendering
   getKonvaComponent() {
-    throw new Error('getKonvaComponent must be implemented by subclass');
+    throw new Error('getKonvaComponent must be implemented');
   }
 
-  // Method to update properties and sync with server
-  async updateProperties(newProperties, revertCallback) {
-    const prevProperties = { ...this.properties };
-    this.properties = { ...this.properties, ...newProperties };
-
-    const response = await this.syncUpdate(
-      this.id,
-      this.type,
-      newProperties,
-      () => {
-        this.properties = prevProperties;
-        revertCallback(this);
-      }
-    );
-
-    return response;
+  async updateProperties(newProps, revert) {
+    const prev = { ...this.properties };
+    this.properties = { ...prev, ...newProps };
+    const res = await this.syncUpdate(this.id, this.type, newProps, () => {
+      this.properties = prev;
+      revert(this);
+    });
+    return res;
   }
 
-  // Method to handle drag end
   async handleDragEnd(e, setState) {
     const newPos = { x: e.target.x(), y: e.target.y() };
-    const prevProperties = { ...this.properties };
-
-    setState(prev => prev.map(item => 
-      item.id === this.id ? { ...item, ...newPos } : item
-    ));
-
-    const response = await this.syncUpdate(
-      this.id,
-      this.type,
-      newPos,
-      () => {
-        this.properties = prevProperties;
-        setState(prev => prev.map(item => 
-          item.id === this.id ? { ...item, ...prevProperties } : item
-        ));
-      }
-    );
-
-    return response;
+    const prev = { ...this.properties };
+    this.properties = { ...this.properties, ...newPos };
+    setState(p => p.map(i => i.id === this.id ? this : i));
+    const res = await this.syncUpdate(this.id, this.type, newPos, () => {
+      this.properties = prev;
+      setState(p => p.map(i => i.id === this.id ? this : i));
+    });
+    return res;
   }
 
-  // Method to handle selection
-  handleSelect(selectObject, setSelectedId) {
-    selectObject(this.id, this.type);
+  handleSelect(select, setSelectedId) {
+    select(this.id, this.type);
     setSelectedId(`${this.type}-${this.id}`);
   }
 
-  // Method to get the identifier
-  getIdentifier() {
-    return `${this.type}-${this.id}`;
-  }
-
-  // Method to delete element
   async delete(setState) {
-    const response = await this.syncUpdate(this.id, this.type, null, () => {
-      setState(prev => [...prev, this]);
-    });
-    return response;
+    const res = await this.syncUpdate(this.id, this.type, null, () => setState(p => [...p, this]));
+    return res;
   }
 }
 

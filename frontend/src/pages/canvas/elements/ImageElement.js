@@ -2,27 +2,18 @@
 import { Image } from 'react-konva';
 
 class ImageElement extends BaseElement {
-  constructor(id, syncUpdate, properties = {}) {
-    super(id, 'image', syncUpdate, {
-      width: 100,
-      height: 100,
-      image: null,
-      url: null,
-      ...properties
-    });
+  constructor(id, syncUpdate, props = {}) {
+    super(id, 'image', syncUpdate, { width: 100, height: 100, url: null, ...props });
   }
 
-  getKonvaComponent({ tool, scale, handleSelect, handleDragEnd }) {
-    const imageObj = this.properties.image || (this.properties.url ? new window.Image() : null);
-    if (this.properties.url && imageObj) {
-      imageObj.src = this.properties.url;
-    }
-
+  getKonvaComponent({ tool, scale, setSelectedId, setState }) {
+    const img = new window.Image();
+    img.src = this.properties.url;
     return (
       <Image
         key={`image-${this.id}`}
         id={`image-${this.id}`}
-        image={imageObj}
+        image={img}
         x={this.properties.x}
         y={this.properties.y}
         width={this.properties.width / scale}
@@ -30,11 +21,11 @@ class ImageElement extends BaseElement {
         draggable={tool === 'select'}
         onClick={(e) => {
           if (tool === 'select') {
-            handleSelect(this);
+            setSelectedId(`image-${this.id}`);
             e.cancelBubble = true;
           }
         }}
-        onDragEnd={(e) => handleDragEnd(this, e)}
+        onDragEnd={(e) => this.handleDragEnd(e, setState)}
       />
     );
   }

@@ -52,7 +52,7 @@ export const handleMouseUp = (isDrawing) => {
 };
 
 export const handleSelect = (id, type, selectObject) => {
-  selectObject(id, type);
+  selectObject(id, type); 
 };
 
 export const iAmBusy = (text) => {
